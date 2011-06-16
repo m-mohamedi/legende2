@@ -99,14 +99,10 @@ def euler_rad_src(solver,solutions,t,dt):
         q[3,:,:] = q[3,:,:] - dt2*(ndim-1)/rad * v * (qstar[3,:,:] + press)
     else:
         from classic2 import src2
-        qbc = solver.append_ghost_cells(state)
-        auxbc = solver.append_ghost_cells_to_aux(state)
         maxmx, maxmy, mx, my = grid.ng[0], grid.ng[1], grid.ng[0], grid.ng[1]
-        mbc = solver.mbc
         xlower, ylower, dx, dy =0,0,0,0 # it is not used
         #t, dt = passed
-        qbc = src2(maxmx,maxmy,mbc,mx,my,xlower,ylower,dx,dy,qbc,auxbc,t,dt)
-        solver.set_global_q(state, qbc)
+        state.q = src2(mx,my,xlower,ylower,dx,dy,q,aux,t,dt)
 
 def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',solver_type='classic'):
     """
@@ -170,7 +166,7 @@ def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',so
     solver.dt=np.min(grid.d)/2*solver.cfl_desired
     solver.setup(sol)
 
-    tfinal =  0.2/np.sqrt(size)
+    tfinal =  0.02/np.sqrt(size)
     import time
     start=time.time()
     solver.evolve_to_time(sol,tfinal)
