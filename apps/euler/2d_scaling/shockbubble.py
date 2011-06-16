@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import numpy as np
+from petsc4py import PETSc
 
 gamma = 1.4
 gamma1 = gamma - 1.
@@ -61,7 +62,7 @@ def euler_rad_src(solver,solutions,t,dt):
     Geometric source terms for Euler equations with radial symmetry.
     Integrated using a 2-stage, 2nd-order Runge-Kutta method.
     """
-    srcterm_language = 'Python'
+    srcterm_language = 'Fortran'
     state = solutions['n'].states[0]
     aux=state.aux
     grid = state.grid
@@ -112,7 +113,7 @@ def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',so
     Solve the Euler equations of compressible fluid dynamics.
     This example involves a bubble of dense gas that is impacted by a shock.
     """
-
+    use_petsc = True
     if use_petsc:
         import petclaw as pyclaw
     else:
@@ -123,6 +124,9 @@ def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',so
     else:
         solver = pyclaw.ClawSolver2D()
 
+    size = PETSc.Comm.getSize(PETSc.COMM_WORLD)
+    rank = PETSc.Comm.getRank(PETSc.COMM_WORLD)
+        
     solver.mwaves = 5
     solver.mthbc_lower[0]=pyclaw.BC.custom
     solver.mthbc_upper[0]=pyclaw.BC.outflow
@@ -135,8 +139,15 @@ def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',so
     solver.mthauxbc_lower[1]=pyclaw.BC.outflow
     solver.mthauxbc_upper[1]=pyclaw.BC.outflow
 
+    solver.cfl_max = 0.5
+    solver.cfl_desired = 0.45
+    solver.dt_variable = True
+
     # Initialize grid
-    mx=600; my=200
+    mx=8*int(np.sqrt(size*10000)); my = 2*int(np.sqrt(size*10000))
+    if rank == 0:
+        print "mx, my = ",mx, my, mx*my
+                
     x = pyclaw.Dimension('x',0.0,2.0,mx)
     y = pyclaw.Dimension('y',0.0,0.5,my)
     grid = pyclaw.Grid([x,y])
@@ -149,27 +160,29 @@ def shockbubble(use_petsc=False,iplot=False,htmlplot=False,outdir='./_output',so
     qinit(state)
     auxinit(state)
 
-    solver.dim_split = 0
+    solver.dim_split = True
     solver.limiters = [4,4,4,4,2]
     solver.user_bc_lower=shockbc
     solver.src=euler_rad_src
     solver.src_split = 1
 
-    claw = pyclaw.Controller()
-    claw.keep_copy = True
-    claw.tfinal = 0.4
-    claw.solution = pyclaw.Solution(state)
-    claw.solver = solver
-    claw.nout = 10
-    claw.outdir = outdir
+    sol = {"n":pyclaw.Solution(state)}
+    solver.dt=np.min(grid.d)/2*solver.cfl_desired
+    solver.setup(sol)
 
-    # Solve
-    status = claw.run()
+    tfinal =  0.2/np.sqrt(size)
+    import time
+    start=time.time()
+    solver.evolve_to_time(sol,tfinal)
+    end=time.time()
+    duration1 = end-start
+    print 'evolve_to_time took'+str(duration1)+' seconds, for process '+str(rank)
+    if rank ==0:
+        print 'number of steps: '+ str(solver.status.get('numsteps'))
 
-    if htmlplot:  pyclaw.plot.plotHTML(outdir=outdir)
-    if iplot:     pyclaw.plot.plotInteractive(outdir=outdir)
 
-    return claw.solution.q
+
+    return 0
 
 if __name__=="__main__":
     import sys
