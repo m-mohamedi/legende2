@@ -89,7 +89,7 @@ if __name__=="__main__":
     import sys
     from petsc4py import PETSc
     WithArgs = False
-    generateProfile = False
+    generateProfile = True
     proccessesList = [0,5]
                         
     if len(sys.argv)>1:
