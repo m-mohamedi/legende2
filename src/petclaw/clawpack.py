@@ -13,6 +13,7 @@ dimensionally dependent ones such as :class:`petclaw.clawpack.ClawSolver1D`.
 """
 from petclaw.solver import PetSolver
 import pyclaw.clawpack
+from petsc4py import PETSc
 
 # ============================================================================
 #  PetClaw 1d Solver Class
@@ -79,5 +80,6 @@ class ClawSolver2D(PetSolver,pyclaw.clawpack.ClawSolver2D):
         if(self.kernel_language == 'Fortran'):
             self.set_fortran_parameters(solutions)
         else: raise Exception('Only Fortran kernels are supported in 2D.')
-
+        self.cflVec = PETSc.Vec().createWithArray([0])
+        
 

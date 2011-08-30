@@ -79,8 +79,9 @@ class PetSolver(pyclaw.solver.Solver):
         from petsc4py import PETSc
 
         if self.dt_variable:
-            cflVec = PETSc.Vec().createWithArray([self.cfl])
-            self.cfl = cflVec.max()[1]
+            self.cflVec.array =self.cfl
+            self.cfl = self.cflVec.max()[1]
+                        
 
     def allocate_rk_stages(self,solutions):
         r"""We could eliminate this function and just use
