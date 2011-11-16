@@ -3,8 +3,10 @@
 
 import numpy as np
 from petsc4py import PETSc
+timeVec = PETSc.Vec().createWithArray([0])
 
-def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',solver_type='classic'):
+
+def acoustics2D(finalt=1,iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',solver_type='classic'):
     """
     Example python script for solving the 2d acoustics equations.
     """
@@ -40,12 +42,13 @@ def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',so
     # Initialize grid
     mx=4*int(np.sqrt(size*10000)); my=mx
     if rank == 0:
-        print "mx, my = ",mx, my    
+        print "mx, my = ",mx, my
+        print "finalt,iplot,htmlplot,use_petsc,outdir,solver_type",finalt,iplot,htmlplot,use_petsc,outdir,solver_type
+    
     x = pyclaw.Dimension('x',-1.0,1.0,mx)
     y = pyclaw.Dimension('y',-1.0,1.0,my)
     grid = pyclaw.Grid([x,y])
     state = pyclaw.State(grid)
-
     rho = 1.0
     bulk = 4.0
     cc = np.sqrt(bulk/rho)
@@ -56,7 +59,9 @@ def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',so
     state.aux_global['cc']=cc
 
     state.meqn = 3
-
+    if rank == 0:
+            print "print q_da.getProcSizes()",state.q_da.getProcSizes()
+            
     Y,X = np.meshgrid(grid.y.center,grid.x.center)
     r = np.sqrt(X**2 + Y**2)
     width=0.2
@@ -69,7 +74,7 @@ def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',so
     ##solver.setup(sol)
 
     # Solve
-    tfinal =  0.2/np.sqrt(size)
+    tfinal = finalt 
     import time
     start=time.time()
     ##solver.evolve_to_time(sol,tfinal)
@@ -86,16 +91,19 @@ def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',so
     claw.keep_copy = False
     claw.solution = pyclaw.Solution(state)
     claw.solver = solver
-    claw.outdir='./_output_'+str(size)
+    claw.outdir='./'+outdir+'_'+str(size)
     claw.nout = 1
                     
-    claw.tfinal =  0.2/np.sqrt(size)
+    claw.tfinal = finalt 
     status = claw.run()
 
     end=time.time()
     duration1 = end-start
-    print 'evolve_to_time took'+str(duration1)+' seconds, for process '+str(rank)
+    timeVec.array =duration1
+    duration1 = timeVec.max()[1]
+                
     if rank ==0:
+        print 'clawrun took '+str(duration1)+' seconds, for process '+str(rank)
         print 'number of steps: '+ str(claw.solver.status.get('numsteps'))
                         
 
@@ -105,28 +113,33 @@ def acoustics2D(iplot=False,htmlplot=False,use_petsc=False,outdir='./_output',so
 
 
 if __name__=="__main__":
-
+    from time import time
+    tstart = time()
     import sys
     from petsc4py import PETSc
+    import cProfile
+    
     WithArgs = False
     generateProfile = True
     proccessesList = [0,5]
-                        
-    if len(sys.argv)>1:
-        from pyclaw.util import _info_from_argv
-        args, kwargs = _info_from_argv(sys.argv)
-        WithArgs= True
-    if generateProfile:
-        rank =PETSc.Comm.getRank(PETSc.COMM_WORLD)
-        size =PETSc.Comm.getSize(PETSc.COMM_WORLD)
-        if rank in proccessesList:
-            import cProfile
-            if WithArgs: cProfile.run('acoustics2D(*args,**kwargs)', 'profile'+str(rank)+'_'+str(size))
-            else: cProfile.run('acoustics2D()', 'profile'+str(rank)+'_'+str(size))
-        else:
-            print "process"+str(rank) +"not profiled"
-            if WithArgs: acoustics2D(*args,**kwargs)
-            else: acoustics2D()
+
+    rank =PETSc.Comm.getRank(PETSc.COMM_WORLD)
+    size =PETSc.Comm.getSize(PETSc.COMM_WORLD)
+    tb1call=time()        
+    acoustics2D(finalt=(0.2/np.sqrt(size))/40,use_petsc=True,outdir='expr_3_2_3_1_a/_output_p1')
+    PETSc.COMM_WORLD.barrier()
+    tb2call=time()
+    acoustics2D(finalt=(0.2/np.sqrt(size))/40,use_petsc=True,outdir='expr_3_2_3_1_a/_output_p2')
+    PETSc.COMM_WORLD.barrier()
+    tb3call=time()
+    if rank in proccessesList:
+        funccall = "acoustics2D(finalt=0.2/np.sqrt(size),use_petsc=True,outdir='expr_3_2_3_1_a/_output_p3')"
+        cProfile.run(funccall, 'expr_3_2_3_1_a/profile'+str(rank)+'_'+str(size))
     else:
-        if WithArgs: acoustics2D(*args,**kwargs)
-        else: acoustics2D()
+        print "process"+str(rank) +"not profiled"
+        acoustics2D(finalt=0.2/np.sqrt(size),use_petsc=True,outdir='expr_3_2_3_1_a/_output_p3')
+    PETSc.COMM_WORLD.barrier()
+    tend = time()
+    if rank == 0: 
+        print "total time for proc",rank," is ",tend-tstart, "up to before p1",tb1call-tstart, "p1",tb2call-tb1call , "p2", tb3call-tb2call, "p3", tend-tb3call
+        print "time to subtract from job time to give load time= part2*2+the rest of the code time", 2*(tb3call-tb2call)+ (tend- tb3call)
